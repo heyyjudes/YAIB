@@ -3,6 +3,7 @@ from datetime import datetime
 import gin
 import logging
 import sys
+import os
 from pathlib import Path
 import torch.cuda
 from icu_benchmarks.wandb_utils import update_wandb_config, apply_wandb_sweep, set_wandb_experiment_name
@@ -20,6 +21,7 @@ from icu_benchmarks.run_utils import (
     name_datasets,
 )
 from icu_benchmarks.contants import RunMode
+import pdb
 
 
 @gin.configurable("Run")
@@ -36,7 +38,10 @@ def main(my_args=tuple(sys.argv[1:])):
         set_wandb_experiment_name(args, "run")
     # Initialize loggers
     log_format = "%(asctime)s - %(levelname)s - %(name)s : %(message)s"
+
+
     date_format = "%Y-%m-%d %H:%M:%S"
+    
     verbose = args.verbose
     setup_logging(date_format, log_format, verbose)
     # Get arguments
@@ -75,11 +80,19 @@ def main(my_args=tuple(sys.argv[1:])):
     )
 
     log_dir_name = args.log_dir / name
-    log_dir = (
-        (log_dir_name / experiment)
-        if experiment
-        else (log_dir_name / (args.task_name if args.task_name is not None else args.task) / model)
-    )
+    if args.hospital_id and args.hospital_id_test: 
+        hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}"
+        log_dir = (
+            (log_dir_name / experiment)
+            if experiment 
+            else (log_dir_name / (args.task_name if args.task_name is not None else args.task) / model / hospital_format)
+        )
+    else: 
+        log_dir = (
+            (log_dir_name / experiment)
+            if experiment
+            else (log_dir_name / (args.task_name if args.task_name is not None else args.task) / model)
+        )
     log_full_line(f"Logging to {log_dir}.", logging.INFO)
 
     # Check cuda availability
@@ -127,6 +140,7 @@ def main(my_args=tuple(sys.argv[1:])):
         )
         gin.parse_config_files_and_bindings(gin_config_files, args.hyperparams, finalize_config=False)
         log_full_line(f"Data directory: {data_dir.resolve()}", level=logging.INFO)
+
         run_dir = create_run_dir(log_dir)
         choose_and_bind_hyperparameters(
             args.tune,
@@ -139,6 +153,8 @@ def main(my_args=tuple(sys.argv[1:])):
             generate_cache=args.generate_cache,
             load_cache=args.load_cache,
             verbose=verbose,
+            hospital_id=args.hospital_id,
+            hospital_id_test=args.hospital_id_test,
         )
 
     log_full_line(f"Logging to {run_dir.resolve()}", level=logging.INFO)
@@ -151,6 +167,7 @@ def main(my_args=tuple(sys.argv[1:])):
     log_full_line(mode_string, level=logging.INFO, char="=", num_newlines=3)
 
     start_time = datetime.now()
+
     execute_repeated_cv(
         data_dir,
         run_dir,
@@ -165,10 +182,13 @@ def main(my_args=tuple(sys.argv[1:])):
         load_cache=args.load_cache,
         generate_cache=args.generate_cache,
         mode=mode,
+        hospital_id=args.hospital_id,
+        hospital_id_test=args.hospital_id_test,
         pretrained_imputation_model=pretrained_imputation_model,
         cpu=args.cpu,
         wandb=args.wandb_sweep,
         complete_train=args.complete_train,
+        save_data=args.save_data
     )
 
     log_full_line("FINISHED TRAINING", level=logging.INFO, char="=", num_newlines=3)

@@ -25,7 +25,7 @@ from icu_benchmarks.wandb_utils import update_wandb_config
 from icu_benchmarks.data.loader import ImputationPredictionDataset
 from .constants import DataSplit as Split, DataSegment as Segment
 import abc
-
+import pdb
 
 class Preprocessor:
     @abc.abstractmethod
@@ -77,9 +77,20 @@ class DefaultClassificationPreprocessor(Preprocessor):
         Returns:
             Preprocessed data.
         """
+        # train_nan = pd.isna(data['train']['DYNAMIC']).sum(axis=1).max()
+        # val_nan = pd.isna(data['val']['DYNAMIC']).sum(axis=1).max()
+        # test_nan = pd.isna(data['test']['DYNAMIC']).sum(axis=1).max()
+        # logging.info(f"1 max NAN train {train_nan} val {val_nan} test {test_nan}")
+        
         logging.info("Preprocessing dynamic features.")
-
+        
         data = self._process_dynamic(data, vars)
+        
+        # train_nan = pd.isna(data['train']['DYNAMIC']).sum(axis=1).max()
+        # val_nan = pd.isna(data['val']['DYNAMIC']).sum(axis=1).max()
+        # test_nan = pd.isna(data['test']['DYNAMIC']).sum(axis=1).max()
+        # logging.info(f"5 max NAN train {train_nan} val {val_nan} test {test_nan}")
+        # pdb.set_trace()
         if self.use_static_features:
             logging.info("Preprocessing static features.")
             data = self._process_static(data, vars)
@@ -88,7 +99,7 @@ class DefaultClassificationPreprocessor(Preprocessor):
             data[Split.train][Segment.static] = data[Split.train][Segment.static].set_index(vars["GROUP"])
             data[Split.val][Segment.static] = data[Split.val][Segment.static].set_index(vars["GROUP"])
             data[Split.test][Segment.static] = data[Split.test][Segment.static].set_index(vars["GROUP"])
-
+            
             # Join static and dynamic data.
             data[Split.train][Segment.dynamic] = data[Split.train][Segment.dynamic].join(
                 data[Split.train][Segment.static], on=vars["GROUP"]
@@ -121,7 +132,6 @@ class DefaultClassificationPreprocessor(Preprocessor):
         sta_rec.add_step(StepSklearn(LabelEncoder(), sel=has_type("object"), columnwise=True))
 
         data = apply_recipe_to_splits(sta_rec, data, Segment.static, self.save_cache, self.load_cache)
-
         return data
 
     def _model_impute(self, data, group=None):
@@ -148,9 +158,15 @@ class DefaultClassificationPreprocessor(Preprocessor):
         dyn_rec.add_step(StepSklearn(MissingIndicator(), sel=all_of(vars[Segment.dynamic]), in_place=False))
         dyn_rec.add_step(StepImputeFastForwardFill())
         dyn_rec.add_step(StepImputeFastZeroFill())
+        
         if self.generate_features:
             dyn_rec = self._dynamic_feature_generation(dyn_rec, all_of(vars[Segment.dynamic]))
         data = apply_recipe_to_splits(dyn_rec, data, Segment.dynamic, self.save_cache, self.load_cache)
+
+        # train_nan = pd.isna(data['train']['DYNAMIC']).sum(axis=1).max()
+        # val_nan = pd.isna(data['val']['DYNAMIC']).sum(axis=1).max()
+        # test_nan = pd.isna(data['test']['DYNAMIC']).sum(axis=1).max()
+        # logging.info(f"4 max NAN train {train_nan} val {val_nan} test {test_nan}")
         return data
 
     def _dynamic_feature_generation(self, data, dynamic_vars):
@@ -318,8 +334,20 @@ def apply_recipe_to_splits(
         # No saving or loading of existing cache
         data[Split.train][type] = recipe.prep()
 
+    # train_nan = pd.isna(data['train']['DYNAMIC']).sum(axis=1).max()
+    # val_nan = pd.isna(data['val']['DYNAMIC']).sum(axis=1).max()
+    # test_nan = pd.isna(data['test']['DYNAMIC']).sum(axis=1).max()
+    # logging.info(f"2 max NAN train {train_nan} val {val_nan} test {test_nan}")
+        
+    # pdb.set_trace()
     data[Split.val][type] = recipe.bake(data[Split.val][type])
     data[Split.test][type] = recipe.bake(data[Split.test][type])
+    # pdb.set_trace()
+    # train_nan = pd.isna(data['train']['DYNAMIC']).sum(axis=1).max()
+    # val_nan = pd.isna(data['val']['DYNAMIC']).sum(axis=1).max()
+    # test_nan = pd.isna(data['test']['DYNAMIC']).sum(axis=1).max()
+    # logging.info(f"3 max NAN train {train_nan} val {val_nan} test {test_nan}")
+
     return data
 
 

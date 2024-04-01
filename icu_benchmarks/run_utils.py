@@ -15,7 +15,7 @@ import shutil
 from statistics import mean, pstdev
 from icu_benchmarks.models.utils import JsonResultLoggingEncoder
 from icu_benchmarks.wandb_utils import wandb_log
-
+import pdb
 
 def build_parser() -> ArgumentParser:
     """Builds an ArgumentParser for the command line.
@@ -52,6 +52,9 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("-sn", "--source-name", type=Path, help="Name of the source dataset.")
     parser.add_argument("--source-dir", type=Path, help="Directory containing gin and model weights.")
     parser.add_argument("-sa", "--samples", type=int, default=None, help="Number of samples to use for evaluation.")
+    parser.add_argument("-hi", "--hospital_id", type=str, default=None, help="hospital_id to included")
+    parser.add_argument("-hit", "--hospital_id_test", type=str, default=None, help="hospital_id to test on")
+    parser.add_argument("-svd", "--save_data", action="store_true", default=False, help="Save data without training")
     return parser
 
 
@@ -110,6 +113,11 @@ def aggregate_results(log_dir: Path, execution_time: timedelta = None):
                         aggregated[repetition.name][fold_iter.name].update(result)
                 elif (fold_iter / "val_metrics.csv").is_file():
                     with open(fold_iter / "val_metrics.csv", "r") as f:
+                        result = json.load(f)
+                        aggregated[repetition.name][fold_iter.name].update(result)
+                # add additional metrics 
+                if (fold_iter / "additional_metrics.json").is_file():
+                    with open(fold_iter / "additional_metrics.json", "r") as f:
                         result = json.load(f)
                         aggregated[repetition.name][fold_iter.name].update(result)
                 # Add durations to metrics

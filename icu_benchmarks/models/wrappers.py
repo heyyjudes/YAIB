@@ -3,7 +3,8 @@ from abc import ABC
 from typing import Dict, Any, List, Optional, Union
 
 import torchmetrics
-from sklearn.metrics import log_loss, mean_squared_error
+from sklearn.metrics import log_loss, mean_squared_error, roc_auc_score
+from sklearn.calibration import calibration_curve
 
 import torch
 from torch.nn import MSELoss, CrossEntropyLoss
@@ -30,6 +31,7 @@ gin.config.external_configurable(nn.functional.mse_loss, module="torch.nn.functi
 gin.config.external_configurable(mean_squared_error, module="sklearn.metrics")
 gin.config.external_configurable(log_loss, module="sklearn.metrics")
 
+import pdb 
 
 @gin.configurable("BaseModule")
 class BaseModule(LightningModule):
@@ -282,7 +284,7 @@ class DLPredictionWrapper(DLWrapper):
             else:
                 # Multiclass classification
                 self.output_transform = softmax_multi_output_transform
-                metrics = DLMetrics.MULTICLASS_CLASSIFICATION
+                metrics = DLMetrics.BINARY_CLASSIFICATION_TORCHMETRICS
         # Regression
         elif self.run_mode == RunMode.regression:
             self.output_transform = lambda x: x
@@ -341,6 +343,7 @@ class DLPredictionWrapper(DLWrapper):
             loss = self.loss(prediction[:, 0], target.float()) + aux_loss
         else:
             raise ValueError(f"Run mode {self.run_mode} not yet supported. Please implement it.")
+        
         transformed_output = self.output_transform((prediction, target))
 
         for key, value in self.metrics[step_prefix].items():
@@ -403,23 +406,23 @@ class MLWrapper(BaseModule, ABC):
         """Fit the model to the training data."""
         train_rep, train_label = train_dataset.get_data_and_labels()
         val_rep, val_label = val_dataset.get_data_and_labels()
-
+        
         self.set_metrics(train_label)
-
         if "class_weight" in self.model.get_params().keys():  # Set class weights
             self.model.set_params(class_weight=self.weight)
 
         val_loss = self.fit_model(train_rep, train_label, val_rep, val_label)
 
         train_pred = self.predict(train_rep)
-
+        
         logging.debug(f"Model:{self.model}")
         self.log("train/loss", self.loss(train_label, train_pred), sync_dist=True)
         logging.debug(f"Train loss: {self.loss(train_label, train_pred)}")
         self.log("val/loss", val_loss, sync_dist=True)
         logging.debug(f"Val loss: {val_loss}")
         self.log_metrics(train_label, train_pred, "train")
-
+        
+        
     def fit_model(self, train_data, train_labels, val_data, val_labels):
         """Fit the model to the training data (default SKlearn syntax)"""
         self.model.fit(train_data, train_labels)
@@ -439,10 +442,10 @@ class MLWrapper(BaseModule, ABC):
 
     def test_step(self, dataset, _):
         test_rep, test_label = dataset
+        # modified training script turns sex and race into the last features
         test_rep, test_label = test_rep.squeeze().cpu().numpy(), test_label.squeeze().cpu().numpy()
         self.set_metrics(test_label)
         test_pred = self.predict(test_rep)
-
         if self.mps:
             self.log("test/loss", np.float32(self.loss(test_label, test_pred)), sync_dist=True)
             self.log_metrics(np.float32(test_label), np.float32(test_pred), "test")
@@ -450,6 +453,26 @@ class MLWrapper(BaseModule, ABC):
             self.log("test/loss", self.loss(test_label, test_pred), sync_dist=True)
             self.log_metrics(test_label, test_pred, "test")
         logging.debug(f"Test loss: {self.loss(test_label, test_pred)}")
+
+        ##########################################################################
+        # log subgroup performance
+        ##########################################################################
+        # test_pred = self.predict(test_rep) 
+        # # gender
+        # sex = test_rep[:, -4]
+        # race = test_rep[:, -1] 
+        
+        # vals, cnts = np.unique(sex, return_counts=True) 
+        # for v, c in zip(vals, cnts): 
+        #     if c > 10: 
+        #         mask = sex == v
+        #         self.log_dict({f'gender{v}_AUC_TEST': roc_auc_score(test_label[mask], test_pred[mask][:, 1])})
+        # # race
+        # vals, cnts = np.unique(race, return_counts=True) 
+        # for v, c in zip(vals, cnts):  
+        #     if c > 10:
+        #         mask = race == v
+        #         self.log_dict({f'race{v}_AUC_TEST': roc_auc_score(test_label[mask], test_pred[mask][:, 1])})
 
     def predict(self, features):
         if self.run_mode == RunMode.regression:

@@ -36,6 +36,8 @@ def choose_and_bind_hyperparameters(
     debug: bool = False,
     verbose: bool = False,
     wandb: bool = False,
+    hospital_id = None, 
+    hospital_id_test = None, 
 ):
     """Choose hyperparameters to tune and bind them to gin.
 
@@ -112,6 +114,8 @@ def choose_and_bind_hyperparameters(
                 debug=debug,
                 verbose=verbose,
                 wandb=wandb,
+                hospital_id = hospital_id, 
+                hospital_id_test = hospital_id_test, 
             )
 
     header = ["ITERATION"] + hyperparams_names + ["LOSS AT ITERATION"]
