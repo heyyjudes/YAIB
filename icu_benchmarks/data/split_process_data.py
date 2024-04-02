@@ -40,7 +40,8 @@ def preprocess_data(
     runmode: RunMode = RunMode.classification,
     hospital_id = None, 
     hospital_id_test = None, 
-    eval_only = False, 
+    eval_only = False,
+    max_train = None,
 ) -> dict[dict[pd.DataFrame]]:
     """Perform loading, splitting, imputing and normalising of task data.
 
@@ -219,15 +220,16 @@ def preprocess_data(
             seed=seed,
             debug=debug,
             runmode=runmode,
+            max_train=max_train,
         )
     else:
         # If full train is set, we use all data for training/validation
         if ts_data: 
             # we have a specified dataset that is outside of the current set
-            tv_data = make_train_test(tv_data, ts_data, vars, train_size=0.8, test_size = 0.8, seed=seed, runmode=runmode)
+            tv_data = make_train_test(tv_data, ts_data, vars, train_size=0.8, test_size=0.8, seed=seed, runmode=runmode, max_train=max_train)
             
         else: 
-            tv_data = make_train_val(tv_data, vars, train_size=0.8, seed=seed, debug=debug, runmode=runmode)
+            tv_data = make_train_val(tv_data, vars, train_size=0.8, seed=seed, debug=debug, runmode=runmode, max_train=max_train)
 
     # Apply preprocessing
     tv_data = preprocessor.apply(tv_data, vars)
@@ -251,6 +253,7 @@ def make_train_test(
     test_size = 1, 
     seed: int = 42,
     runmode: RunMode = RunMode.classification,
+    max_train = None,
 ) -> dict[dict[pd.DataFrame]]:
     """Randomly split the data into training and validation sets for fitting a full model.
 
@@ -277,36 +280,26 @@ def make_train_test(
         train_val = StratifiedShuffleSplit(train_size=train_size, random_state=seed, n_splits=1)
     train, val = list(train_val.split(stays, labels))[0]
 
+    if max_train: 
+        # shuffled already so we can just take first max_test 
+        train = train[:max_train] 
+        logging.info(f"truncating train set to {max_train} patients") 
+        
     split = {Split.train: stays.iloc[train], Split.val: stays.iloc[val]}
 
+        
     data_split = {}
 
     for fold in split.keys():  # Loop through splits (train / val / test)
         # Loop through segments (DYNAMIC / STATIC / OUTCOME)
-        # set sort to true to make sure that IDs are reordered after scrambling earlier
-        # data_split[fold] = {
-        #     data_type: data[data_type].merge(split[fold], on=id, how="right", sort=True) for data_type in data.keys()
-        # }
         data_split = {}  # Initialize an empty dictionary to store the split data
         for fold in split.keys():  # Iterate over the folds (e.g., 'train', 'val', 'test')
             data_split[fold] = {
             data_type: data[data_type].merge(split[fold], on=id, how="right", sort=True) for data_type in data.keys()
         }
-            # data_split[fold] = {}  # Initialize an empty dictionary for the current fold
+
+
         
-            # for data_type in data.keys():  # Iterate over the data types (e.g., 'vitals', 'labs', 'notes')
-            #     # Merge the current data type with the current fold split
-            #     # The merge is performed based on the 'id' column using a right join
-            #     # This ensures that all rows from the split DataFrame are included,
-            #     # and only the matching rows from the data DataFrame are merged
-            #     # The 'sort=True' argument ensures that the resulting DataFrame is sorted
-            #     merged_data = data[data_type].iloc[split[fold].index]
-            #     merged_data = merged_data.sort_values('stay_id').reset_index()
-            #     merged_data = merged_data.drop(['index'], axis=1)
-                
-            #     # Store the merged data in the data_split dictionary
-            #     data_split[fold][data_type] = merged_data
-                
     # subsample test set eval 
     # Get stay IDs from outcome segment
     stays = pd.Series(ts_data[Segment.outcome][id].unique(), name=id)
@@ -323,6 +316,7 @@ def make_train_val(
     seed: int = 42,
     debug: bool = False,
     runmode: RunMode = RunMode.classification,
+    max_train = None
 ) -> dict[dict[pd.DataFrame]]:
     """Randomly split the data into training and validation sets for fitting a full model.
 
@@ -358,6 +352,10 @@ def make_train_val(
         train_val = ShuffleSplit(train_size=train_size, random_state=seed)
         train, val = list(train_val.split(stays))[0]
 
+    if max_train: 
+        # shuffled already so we can just take first max_test 
+        train = train[:max_train] 
+        logging.info(f"truncating train set to {max_train} patients") 
     split = {Split.train: stays.iloc[train], Split.val: stays.iloc[val]}
 
     data_split = {} 
@@ -386,6 +384,7 @@ def make_single_split(
     seed: int = 42,
     debug: bool = False,
     runmode: RunMode = RunMode.classification,
+    max_train = None, 
 ) -> dict[dict[pd.DataFrame]]:
     """Randomly split the data into training, validation, and test set.
 
@@ -443,7 +442,11 @@ def make_single_split(
         dev, test = list(outer_cv.split(stays))[repetition_index]
         dev_stays = stays.iloc[dev]
         train, val = list(inner_cv.split(dev_stays))[fold_index]
-
+    
+    if max_train: 
+        # shuffled already so we can just take first max_test 
+        train = train[:max_train] 
+        logging.info(f"truncating train set to {max_train} patients") 
     split = {
         Split.train: dev_stays.iloc[train],
         Split.val: dev_stays.iloc[val],

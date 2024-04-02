@@ -80,8 +80,27 @@ def main(my_args=tuple(sys.argv[1:])):
     )
 
     log_dir_name = args.log_dir / name
-    if args.hospital_id and args.hospital_id_test: 
-        hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}"
+    if args.hospital_id: 
+        if args.hospital_id_test: 
+            hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}"
+            if args.max_train: 
+                if args.hospital_id == args.hospital_id_test: 
+                    hospital_format = f"train-test{args.hospital_id}-n{args.max_train}"
+                else: 
+                    hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-n{args.max_train}"
+        else:
+            if args.max_train: 
+                hospital_format = f"train{args.hospital_id}-n{args.max_train}"
+            else: 
+                hospital_format = f"train{args.hospital_id}"
+        
+        log_dir = (
+            (log_dir_name / experiment)
+            if experiment 
+            else (log_dir_name / (args.task_name if args.task_name is not None else args.task) / model / hospital_format)
+        )
+    elif args.max_train: 
+        hospital_format = f"n{args.max_train}"
         log_dir = (
             (log_dir_name / experiment)
             if experiment 
@@ -188,7 +207,8 @@ def main(my_args=tuple(sys.argv[1:])):
         cpu=args.cpu,
         wandb=args.wandb_sweep,
         complete_train=args.complete_train,
-        save_data=args.save_data
+        save_data=args.save_data,
+        max_train=args.max_train,
     )
 
     log_full_line("FINISHED TRAINING", level=logging.INFO, char="=", num_newlines=3)

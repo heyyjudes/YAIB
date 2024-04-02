@@ -54,6 +54,7 @@ def build_parser() -> ArgumentParser:
     parser.add_argument("-sa", "--samples", type=int, default=None, help="Number of samples to use for evaluation.")
     parser.add_argument("-hi", "--hospital_id", type=str, default=None, help="hospital_id to included")
     parser.add_argument("-hit", "--hospital_id_test", type=str, default=None, help="hospital_id to test on")
+    parser.add_argument("-mxt", "--max_train", type=int, default=None, help="max number of training points")
     parser.add_argument("-svd", "--save_data", action="store_true", default=False, help="Save data without training")
     return parser
 

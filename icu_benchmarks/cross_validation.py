@@ -44,6 +44,7 @@ def execute_repeated_cv(
     hospital_id = None,
     hospital_id_test = None, 
     save_data=False, 
+    max_train=None, 
 ) -> float:
     """Preprocesses data and trains a model for each fold.
 
@@ -117,6 +118,7 @@ def execute_repeated_cv(
                 hospital_id=hospital_id,
                 hospital_id_test=hospital_id_test,
                 eval_only=eval_only,
+                max_train=max_train,
             )
             if save_data: 
                 save_data_to_dir(log_dir, data)
