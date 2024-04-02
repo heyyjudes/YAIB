@@ -12,7 +12,10 @@ from icu_benchmarks.models.train import train_common
 from icu_benchmarks.models.utils import JsonResultLoggingEncoder
 from icu_benchmarks.run_utils import log_full_line
 from icu_benchmarks.contants import RunMode
-
+from icu_benchmarks.data.loader import PredictionDataset, ImputationDataset
+import pdb
+import os
+import numpy as np
 
 @gin.configurable
 def execute_repeated_cv(
@@ -38,11 +41,10 @@ def execute_repeated_cv(
     verbose: bool = False,
     wandb: bool = False,
     complete_train: bool = False,
-    explain: bool = False,
-    pytorch_forecasting: bool = False,
-    XAI_metric: bool = False,
-    random_labels: bool = False,
-    random_model_dir: str = None,
+    hospital_id = None,
+    hospital_id_test = None, 
+    save_data=False, 
+    max_train=None, 
 ) -> float:
     """Preprocesses data and trains a model for each fold.
 
@@ -79,7 +81,14 @@ def execute_repeated_cv(
         cv_folds_to_train = cv_folds
     agg_loss = 0
     seed_everything(seed, reproducible)
-    if complete_train:
+    
+    train_only = True
+    if hospital_id_test: 
+        assert(test_on == "test") 
+        train_only = False
+        load_cache = False
+                    
+    if complete_train and train_only:
         logging.info("Will train full model without cross validation.")
         cv_repetitions_to_train = 1
         cv_folds_to_train = 1
@@ -91,11 +100,10 @@ def execute_repeated_cv(
         for fold_index in range(cv_folds_to_train):
             repetition_fold_dir = log_dir / f"repetition_{repetition}" / f"fold_{fold_index}"
             repetition_fold_dir.mkdir(parents=True, exist_ok=True)
-
             start_time = datetime.now()
             data = preprocess_data(
                 data_dir,
-                seed=seed,
+                seed=seed*fold_index,
                 debug=debug,
                 load_cache=load_cache,
                 generate_cache=generate_cache,
@@ -107,12 +115,21 @@ def execute_repeated_cv(
                 pretrained_imputation_model=pretrained_imputation_model,
                 runmode=mode,
                 complete_train=complete_train,
+                hospital_id=hospital_id,
+                hospital_id_test=hospital_id_test,
+                eval_only=eval_only,
+                max_train=max_train,
             )
-
+            if save_data: 
+                save_data_to_dir(log_dir, data)
+                return 
+                
             preprocess_time = datetime.now() - start_time
             start_time = datetime.now()
+
+ 
             agg_loss += train_common(
-                data,
+                data, 
                 log_dir=repetition_fold_dir,
                 eval_only=eval_only,
                 load_weights=load_weights,
@@ -123,12 +140,7 @@ def execute_repeated_cv(
                 cpu=cpu,
                 verbose=verbose,
                 use_wandb=wandb,
-                train_only=complete_train,
-                explain=explain,
-                pytorch_forecasting=pytorch_forecasting,
-                XAI_metric=XAI_metric,
-                random_labels=random_labels,
-                random_model_dir=random_model_dir,
+                train_only=complete_train and train_only # if we dont test if there's no test set AND the complete train flag is on
             )
 
             train_time = datetime.now() - start_time
@@ -156,3 +168,14 @@ def execute_repeated_cv(
         )
 
     return agg_loss / (cv_repetitions_to_train * cv_folds_to_train)
+
+def save_data_to_dir(log_dir, data): 
+    save_dict = {} 
+    for split in data.keys(): 
+        dataset = PredictionDataset(data, split=split)
+        data_rep, data_labels = dataset.get_data_and_labels()
+        save_dict[split] = {}
+        save_dict[split]['features'] = data_rep
+        save_dict[split]['labels'] = data_labels
+    np.savez(f"{log_dir.parents[0]}/data.npz", **save_dict)
+    return 

@@ -4,6 +4,9 @@ import numpy as np
 import torch.nn as nn
 from typing import Dict
 from icu_benchmarks.contants import RunMode
+from icu_benchmarks.models.layers import TransformerBlock, LocalBlock, TemporalBlock, PositionalEncoding
+from icu_benchmarks.models.wrappers import DLPredictionWrapper
+import pdb
 from icu_benchmarks.models.layers import (
     TransformerBlock,
     LocalBlock,
@@ -18,7 +21,6 @@ from icu_benchmarks.models.wrappers import (
 from torch import Tensor
 from pytorch_forecasting import TemporalFusionTransformer, RecurrentNetwork, DeepAR
 from pytorch_forecasting.metrics import QuantileLoss
-
 
 @gin.configurable
 class RNNet(DLPredictionWrapper):
@@ -68,7 +70,7 @@ class LSTMNet(DLPredictionWrapper):
         )
         self.hidden_dim = hidden_dim
         self.layer_dim = layer_dim
-        self.rnn = nn.LSTM(input_size[2], hidden_dim, layer_dim, batch_first=True)
+        self.rnn = nn.LSTM(input_size[2], int(hidden_dim), int(layer_dim), batch_first=True)
         self.logit = nn.Linear(hidden_dim, num_classes)
 
     def init_hidden(self, x):

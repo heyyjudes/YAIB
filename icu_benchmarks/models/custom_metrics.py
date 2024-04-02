@@ -2,11 +2,11 @@ import torch
 from typing import Callable
 import numpy as np
 from ignite.metrics import EpochMetric
-from sklearn.metrics import balanced_accuracy_score, mean_absolute_error
+from sklearn.metrics import balanced_accuracy_score, mean_absolute_error, roc_auc_score
 from sklearn.calibration import calibration_curve
 from scipy.spatial.distance import jensenshannon
 from torchmetrics.classification import BinaryFairness
-from quantus.functions.similarity_func import correlation_spearman, cosine
+import pdb
 
 """"
 This file contains custom metrics that can be added to YAIB.
@@ -43,6 +43,27 @@ class BalancedAccuracy(EpochMetric):
             y_pred = np.argmax(y_preds.numpy(), axis=-1)
             return balanced_accuracy_score(y_true, y_pred)
 
+class SubgroupAUC(EpochMetric):
+    def __init__(self, output_transform: Callable = lambda x: x, check_compute_fn: bool = False) -> None:
+        super(SubgroupAUC, self).__init__(
+            self.subgroup_auc_compute, output_transform=output_transform, check_compute_fn=check_compute_fn
+        )
+
+        def subgroup_auc_compute(y_preds: torch.Tensor, y_targets: torch.Tensor, group_membership: torch.Tensor) -> dict:
+            pdb.set_trace()
+            values, counts = torch.unique(group_membership)
+            results = {} 
+            for g, cnt in zip(values, counts):
+                if cnt < 10: 
+                    results[g] = torch.tensor([0])
+                else: 
+                    mask = group_membership == g 
+                    results[g] = roc_auc_score(y_targets, y_preds)
+            return results
+
+
+def AccuracyDisparity(EpochMetric): 
+    pass 
 
 class CalibrationCurve(EpochMetric):
     def __init__(self, output_transform: Callable = lambda x: x, check_compute_fn: bool = False) -> None:
@@ -53,6 +74,7 @@ class CalibrationCurve(EpochMetric):
         )
 
         def ece_curve_compute_fn(y_preds: torch.Tensor, y_targets: torch.Tensor, n_bins=10) -> float:
+            pdb.set_trace() 
             y_true = y_targets.numpy()
             y_pred = y_preds.numpy()
             return calibration_curve(y_true, y_pred, n_bins=n_bins)
