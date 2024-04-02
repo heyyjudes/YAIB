@@ -16,6 +16,7 @@ from statistics import mean, pstdev
 from icu_benchmarks.models.utils import JsonResultLoggingEncoder
 from icu_benchmarks.wandb_utils import wandb_log
 import pdb
+import numpy as np
 
 def build_parser() -> ArgumentParser:
     """Builds an ArgumentParser for the command line.
@@ -121,9 +122,14 @@ def aggregate_results(log_dir: Path, execution_time: timedelta = None):
                     with open(fold_iter / "additional_metrics.json", "r") as f:
                         result = json.load(f)
                         aggregated[repetition.name][fold_iter.name].update(result)
+
                 # Add durations to metrics
                 if (fold_iter / "durations.json").is_file():
                     with open(fold_iter / "durations.json", "r") as f:
+                        result = json.load(f)
+                        aggregated[repetition.name][fold_iter.name].update(result)
+                if (fold_iter / "XAI_metrics.json").is_file():
+                    with open(fold_iter / "XAI_metrics.json", "r") as f:
                         result = json.load(f)
                         aggregated[repetition.name][fold_iter.name].update(result)
 
@@ -141,7 +147,10 @@ def aggregate_results(log_dir: Path, execution_time: timedelta = None):
 
     # Calculate the population standard deviation over aggregated results over folds/iterations
     # Divide by sqrt(n) to get standard deviation.
-    std_scores = {metric: (pstdev(list) / sqrt(len(list))) for metric, list in list_scores.items()}
+
+    std_scores = {
+        metric: (pstdev(list) / sqrt(len(list))) for metric, list in list_scores.items() if not (np.isnan(list).all())
+    }
 
     confidence_interval = {
         metric: (stats.t.interval(0.95, len(list) - 1, loc=mean(list), scale=stats.sem(list)))
@@ -154,6 +163,10 @@ def aggregate_results(log_dir: Path, execution_time: timedelta = None):
         "CI_0.95": confidence_interval,
         "execution_time": execution_time.total_seconds() if execution_time is not None else 0.0,
     }
+    log_dir_plots = log_dir / "plots"
+    if not (log_dir_plots.exists()):
+        log_dir_plots.mkdir(parents=True)
+    # plot_XAI_Metrics(accumulated_metrics, log_dir_plots=log_dir_plots)
 
     with open(log_dir / "aggregated_test_metrics.json", "w") as f:
         json.dump(aggregated, f, cls=JsonResultLoggingEncoder)
@@ -184,7 +197,12 @@ def log_full_line(msg: str, level: int = logging.INFO, char: str = "-", num_newl
     reserved_chars = len(logging.getLevelName(level)) + 28
     logging.log(
         level,
-        "{0:{char}^{width}}{1}".format(msg, "\n" * num_newlines, char=char, width=terminal_size.columns - reserved_chars),
+        "{0:{char}^{width}}{1}".format(
+            msg,
+            "\n" * num_newlines,
+            char=char,
+            width=terminal_size.columns - reserved_chars,
+        ),
     )
 
 

@@ -88,7 +88,10 @@ def choose_and_bind_hyperparameters(
             n_calls, configuration, evaluation = load_checkpoint(checkpoint_path, n_calls)
             # Check if we surpassed maximum tuning iterations
             if n_calls <= 0:
-                logging.log(TUNE, "No more hyperparameter tuning iterations left, skipping tuning.")
+                logging.log(
+                    TUNE,
+                    "No more hyperparameter tuning iterations left, skipping tuning.",
+                )
                 logging.info("Training with these hyperparameters:")
                 bind_gin_params(hyperparams_names, configuration[np.argmin(evaluation)])  # bind best hyperparameters
                 return
