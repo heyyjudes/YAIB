@@ -5,7 +5,7 @@ import torch.nn as nn
 from icu_benchmarks.contants import RunMode
 from icu_benchmarks.models.layers import TransformerBlock, LocalBlock, TemporalBlock, PositionalEncoding
 from icu_benchmarks.models.wrappers import DLPredictionWrapper
-
+import pdb
 
 @gin.configurable
 class RNNet(DLPredictionWrapper):
@@ -45,7 +45,7 @@ class LSTMNet(DLPredictionWrapper):
         )
         self.hidden_dim = hidden_dim
         self.layer_dim = layer_dim
-        self.rnn = nn.LSTM(input_size[2], hidden_dim, layer_dim, batch_first=True)
+        self.rnn = nn.LSTM(input_size[2], int(hidden_dim), int(layer_dim), batch_first=True)
         self.logit = nn.Linear(hidden_dim, num_classes)
 
     def init_hidden(self, x):

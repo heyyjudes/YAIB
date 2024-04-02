@@ -11,7 +11,7 @@ from icu_benchmarks.imputation.amputations import ampute_data
 from .constants import DataSegment as Segment
 from .constants import DataSplit as Split
 
-
+import pdb 
 class CommonDataset(Dataset):
     """Common dataset: subclass of Torch Dataset that represents the data to learn on.
 
@@ -26,6 +26,8 @@ class CommonDataset(Dataset):
         split: str = Split.train,
         vars: Dict[str, str] = gin.REQUIRED,
         grouping_segment: str = Segment.outcome,
+        mps: bool = False,
+        name: str = "",
     ):
         self.split = split
         self.vars = vars
@@ -37,11 +39,13 @@ class CommonDataset(Dataset):
         # calculate basic info for the data
         self.num_stays = self.grouping_df.index.unique().shape[0]
         self.maxlen = self.features_df.groupby([self.vars["GROUP"]]).size().max()
+        self.mps = mps
+        self.name = name
 
     def ram_cache(self, cache: bool = True):
         self._cached_dataset = None
         if cache:
-            logging.info("Caching dataset in ram.")
+            logging.info(f"Caching {self.split} dataset in ram.")
             self._cached_dataset = [self[i] for i in range(len(self))]
 
     def __len__(self) -> int:
@@ -96,13 +100,11 @@ class PredictionDataset(CommonDataset):
         # slice to make sure to always return a DF
         window = self.features_df.loc[stay_id:stay_id].to_numpy()
         labels = self.outcome_df.loc[stay_id:stay_id][self.vars["LABEL"]].to_numpy(dtype=float)
-
         if len(labels) == 1:
             # only one label per stay, align with window
             labels = np.concatenate([np.empty(window.shape[0] - 1) * np.nan, labels], axis=0)
 
         length_diff = self.maxlen - window.shape[0]
-
         pad_mask = np.ones(window.shape[0])
 
         # Padding the array to fulfill size requirement
@@ -132,7 +134,14 @@ class PredictionDataset(CommonDataset):
         counts = self.outcome_df[self.vars["LABEL"]].value_counts()
         return list((1 / counts) * np.sum(counts) / counts.shape[0])
 
-    def get_data_and_labels(self) -> Tuple[np.array, np.array]:
+    def to_tensor(self):
+        data, labels = self.get_data_and_labels()
+        if self.mps:
+            return from_numpy(data).to(float32), from_numpy(labels).to(float32)
+        else:
+            return from_numpy(data), from_numpy(labels)
+
+    def get_data_and_labels(self, groups=False, max_size=None) -> Tuple[np.array, np.array]:
         """Function to return all the data and labels aligned at once.
 
         We use this function for the ML methods which don't require an iterator.
@@ -141,17 +150,30 @@ class PredictionDataset(CommonDataset):
             A Tuple containing data points and label for the split.
         """
         labels = self.outcome_df[self.vars["LABEL"]].to_numpy().astype(float)
+        
         rep = self.features_df
+        ####################################################################
+        # Adding race and sex
+        ####################################################################
+        
+        sex = self.features_df.groupby(level=self.vars["GROUP"], sort=False).last()['sex']
+        race = self.features_df.groupby(level=self.vars["GROUP"], sort=False).last()['ethnic']
         if len(labels) == self.num_stays:
             # order of groups could be random, we make sure not to change it
             rep = rep.groupby(level=self.vars["GROUP"], sort=False).last()
         rep = rep.to_numpy().astype(float)
 
-        return rep, labels
+        if groups: 
+            return rep, labels, sex, race 
+        else: 
+            return rep, labels
 
     def to_tensor(self):
         data, labels = self.get_data_and_labels()
-        return from_numpy(data), from_numpy(labels)
+        if self.mps:
+            return from_numpy(data).to(float32), from_numpy(labels).to(float32)
+        else:
+            return from_numpy(data), from_numpy(labels)
 
 
 @gin.configurable("ImputationDataset")
