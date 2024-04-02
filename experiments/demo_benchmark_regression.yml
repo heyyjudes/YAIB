@@ -28,7 +28,7 @@ parameters:
       - GRU
       - LSTM
       - TCN
-      - Transformer
+      - TFT
   seed:
     values:
       - 1111

@@ -221,8 +221,11 @@ class DefaultRegressionPreprocessor(DefaultClassificationPreprocessor):
         Returns:
             Preprocessed data.
         """
-        for split in [Split.train, Split.val, Split.test]:
-            data = self._process_outcome(data, vars, split)
+
+        self.outcome_max = data["train"]["OUTCOME"]["label"].max()
+        self.outcome_min = data["train"]["OUTCOME"]["label"].min()
+        # for split in [Split.train, Split.val, Split.test]:
+        #    data = self._process_outcome(data, vars, split)
 
         data = super().apply(data, vars)
         return data

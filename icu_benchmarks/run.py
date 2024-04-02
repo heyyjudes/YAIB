@@ -6,7 +6,11 @@ import sys
 import os
 from pathlib import Path
 import torch.cuda
-from icu_benchmarks.wandb_utils import update_wandb_config, apply_wandb_sweep, set_wandb_experiment_name
+from icu_benchmarks.wandb_utils import (
+    update_wandb_config,
+    apply_wandb_sweep,
+    set_wandb_experiment_name,
+)
 from icu_benchmarks.tuning.hyperparameters import choose_and_bind_hyperparameters
 from scripts.plotting.utils import plot_aggregated_results
 from icu_benchmarks.cross_validation import execute_repeated_cv
@@ -53,6 +57,11 @@ def main(my_args=tuple(sys.argv[1:])):
     evaluate = args.eval
     experiment = args.experiment
     source_dir = args.source_dir
+    explain = args.explain
+    pytorch_forecasting = args.pytorch_forecasting
+    XAI_metric = args.XAI_metric
+    random_labels = args.random_labels
+
     # Load task config
     gin.parse_config_file(f"configs/tasks/{task}.gin")
     mode = get_mode()
@@ -78,7 +87,7 @@ def main(my_args=tuple(sys.argv[1:])):
             else "None"
         }
     )
-
+    random_model_dir = args.random_model
     log_dir_name = args.log_dir / name
     if args.hospital_id: 
         if args.hospital_id_test: 
@@ -117,10 +126,14 @@ def main(my_args=tuple(sys.argv[1:])):
     # Check cuda availability
     if torch.cuda.is_available():
         for name in range(0, torch.cuda.device_count()):
-            log_full_line(f"Available GPU {name}: {torch.cuda.get_device_name(name)}", level=logging.INFO)
+            log_full_line(
+                f"Available GPU {name}: {torch.cuda.get_device_name(name)}",
+                level=logging.INFO,
+            )
     else:
         log_full_line(
-            "No GPUs available: please check your device and Torch,Cuda installation if unintended.", level=logging.WARNING
+            "No GPUs available: please check your device and Torch,Cuda installation if unintended.",
+            level=logging.WARNING,
         )
 
     if args.preprocessor:
@@ -150,7 +163,7 @@ def main(my_args=tuple(sys.argv[1:])):
         name_datasets(args.name, args.name, args.name)
         hp_checkpoint = log_dir / args.hp_checkpoint if args.hp_checkpoint else None
         model_path = (
-                Path("configs") / ("imputation_models" if mode == RunMode.imputation else "prediction_models") / f"{model}.gin"
+            Path("configs") / ("imputation_models" if mode == RunMode.imputation else "prediction_models") / f"{model}.gin"
         )
         gin_config_files = (
             [Path(f"configs/experiments/{args.experiment}.gin")]
@@ -172,8 +185,6 @@ def main(my_args=tuple(sys.argv[1:])):
             generate_cache=args.generate_cache,
             load_cache=args.load_cache,
             verbose=verbose,
-            hospital_id=args.hospital_id,
-            hospital_id_test=args.hospital_id_test,
         )
 
     log_full_line(f"Logging to {run_dir.resolve()}", level=logging.INFO)

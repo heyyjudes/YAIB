@@ -142,13 +142,17 @@ def execute_repeated_cv(
                 use_wandb=wandb,
                 train_only=complete_train and train_only # if we dont test if there's no test set AND the complete train flag is on
             )
+
             train_time = datetime.now() - start_time
 
             log_full_line(
                 f"FINISHED FOLD {fold_index}| PREPROCESSING DURATION {preprocess_time}| PROCEDURE DURATION {train_time}",
                 level=logging.INFO,
             )
-            durations = {"preprocessing_duration": preprocess_time, "train_duration": train_time}
+            durations = {
+                "preprocessing_duration": preprocess_time,
+                "train_duration": train_time,
+            }
 
             with open(repetition_fold_dir / "durations.json", "w") as f:
                 json.dump(durations, f, cls=JsonResultLoggingEncoder)
@@ -156,7 +160,12 @@ def execute_repeated_cv(
                 wandb_log({"Iteration": repetition * cv_folds_to_train + fold_index})
             if repetition * cv_folds_to_train + fold_index > 1:
                 aggregate_results(log_dir)
-        log_full_line(f"FINISHED CV REPETITION {repetition}", level=logging.INFO, char="=", num_newlines=3)
+        log_full_line(
+            f"FINISHED CV REPETITION {repetition}",
+            level=logging.INFO,
+            char="=",
+            num_newlines=3,
+        )
 
     return agg_loss / (cv_repetitions_to_train * cv_folds_to_train)
 
