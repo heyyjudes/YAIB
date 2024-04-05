@@ -174,6 +174,7 @@ def main(my_args=tuple(sys.argv[1:])):
             verbose=verbose,
             hospital_id=args.hospital_id,
             hospital_id_test=args.hospital_id_test,
+            max_train=args.max_train,
         )
 
     log_full_line(f"Logging to {run_dir.resolve()}", level=logging.INFO)

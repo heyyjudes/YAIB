@@ -226,10 +226,10 @@ def preprocess_data(
         # If full train is set, we use all data for training/validation
         if ts_data: 
             # we have a specified dataset that is outside of the current set
-            tv_data = make_train_test(tv_data, ts_data, vars, train_size=0.8, test_size=0.8, seed=seed, runmode=runmode, max_train=max_train)
+            tv_data = make_train_test(tv_data, ts_data, vars, train_size=0.9, test_size=0.8, seed=seed, runmode=runmode, max_train=max_train)
             
         else: 
-            tv_data = make_train_val(tv_data, vars, train_size=0.8, seed=seed, debug=debug, runmode=runmode, max_train=max_train)
+            tv_data = make_train_val(tv_data, vars, train_size=0.9, seed=seed, debug=debug, runmode=runmode, max_train=max_train)
 
     # Apply preprocessing
     tv_data = preprocessor.apply(tv_data, vars)

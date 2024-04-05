@@ -123,6 +123,13 @@ class DefaultClassificationPreprocessor(Preprocessor):
         return data
 
     def _process_static(self, data, vars):
+        # add all race labels to train split before preprocessing 
+        race = ['asian', 'white', 'black', 'other']
+        orig_len = len(data[Split.train][Segment.static])
+        df = data[Split.train][Segment.static].head(4) 
+        df['ethnic'] = race
+        data[Split.train][Segment.static] = pd.concat((data[Split.train][Segment.static], df))
+        
         sta_rec = Recipe(data[Split.train][Segment.static], [], vars[Segment.static])
         if self.scaling:
             sta_rec.add_step(StepScale())
@@ -132,6 +139,8 @@ class DefaultClassificationPreprocessor(Preprocessor):
         sta_rec.add_step(StepSklearn(LabelEncoder(), sel=has_type("object"), columnwise=True))
 
         data = apply_recipe_to_splits(sta_rec, data, Segment.static, self.save_cache, self.load_cache)
+        
+        data[Split.train][Segment.static] = data[Split.train][Segment.static].head(orig_len)
         return data
 
     def _model_impute(self, data, group=None):

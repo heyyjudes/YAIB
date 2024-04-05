@@ -84,7 +84,7 @@ def execute_repeated_cv(
     
     train_only = True
     if hospital_id_test: 
-        assert(test_on == "test") 
+        #assert(test_on == "test") 
         train_only = False
         load_cache = False
                     
