@@ -13,6 +13,7 @@ from icu_benchmarks.run_utils import log_full_line
 from icu_benchmarks.tuning.gin_utils import get_gin_hyperparameters, bind_gin_params
 from icu_benchmarks.contants import RunMode
 from icu_benchmarks.wandb_utils import wandb_log
+import pdb
 
 TUNE = 25
 logging.addLevelName(25, "TUNE")
@@ -38,6 +39,7 @@ def choose_and_bind_hyperparameters(
     wandb: bool = False,
     hospital_id = None, 
     hospital_id_test = None, 
+    max_train = None, 
 ):
     """Choose hyperparameters to tune and bind them to gin.
 
@@ -70,7 +72,6 @@ def choose_and_bind_hyperparameters(
 
     # Collect hyperparameters.
     hyperparams_bounds, hyperparams_names = collect_bound_hyperparameters(hyperparams, scopes)
-
     if do_tune and not hyperparams_bounds:
         logging.info("No hyperparameters to tune, skipping tuning.")
         return
@@ -116,6 +117,7 @@ def choose_and_bind_hyperparameters(
                 wandb=wandb,
                 hospital_id = hospital_id, 
                 hospital_id_test = hospital_id_test, 
+                max_train = max_train,
             )
 
     header = ["ITERATION"] + hyperparams_names + ["LOSS AT ITERATION"]

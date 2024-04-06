@@ -41,7 +41,8 @@ def preprocess_data(
     hospital_id = None, 
     hospital_id_test = None, 
     eval_only = False,
-    max_train = None,
+    max_train = False,
+    addition_cap = False, 
 ) -> dict[dict[pd.DataFrame]]:
     """Perform loading, splitting, imputing and normalising of task data.
 
@@ -103,7 +104,7 @@ def preprocess_data(
 
     # set fixed size test set
     max_test = 400
-    
+    max_per_hospital = 1666 #1500/0.9 sinze 0.9 of the total data is used for train 
     # filter by hospital id
     if hospital_id: 
         hospital_patient_df = pd.read_csv(os.path.join(data_dir, "patient_hospital.csv"))
@@ -122,17 +123,12 @@ def preprocess_data(
                 test_patient_list = hospital_patient_df[hospital_patient_df["hospitalid"]==int(hospital_id_test)]["patientunitstayid"].to_list()
                 ts_data = {}
                 tv_split = {}
-                if len(hospitals) == 1: 
-                    # 20% test if training and evaling on same hospital
-                    frac = 0.2 
-                else: 
-                    # 50% otherwise
-                    frac = 0.5
                 
                 df = tv_data['OUTCOME']
                 # filter tv_data by patients in test hospital 
                 selected = df[df["stay_id"].isin(test_patient_list)]
 
+                # select 400 patients in test hospital as test set
                 pos_class = False
                 while pos_class == False: 
                     df_test = selected.sample(n=max_test)
@@ -151,12 +147,36 @@ def preprocess_data(
                     # save half for training data
                     tv_split[key] = df[df["stay_id"].isin(df_train_val['stay_id'])] 
                 # get all the patients not in the test hospital
-
+                if len(hospitals) > 2 and max_train: 
+                    max_per_hospital_addition = int((max_train - max_per_hospital)/(0.9*len(hospitals)))
+                    logging.info(f"more than 2 hospitals limited to {max_per_hospital_addition} additional hospital")
+                else: 
+                    max_per_hospital_addition = max_per_hospital
+                    
                 if len(hospitals) > 1: 
                     train_patient_list = [] 
                     for h in hospitals: 
                         if h != hospital_id_test: 
-                            train_patient_list += hospital_patient_df[hospital_patient_df["hospitalid"]==int(h)]["patientunitstayid"].to_list()   
+
+                            hos_patients = hospital_patient_df[hospital_patient_df["hospitalid"]==int(h)]["patientunitstayid"].to_list()
+                            all_patients = tv_data['OUTCOME']['stay_id'].tolist()
+                            intersection = pd.Series(sorted(set(hos_patients).intersection(set(all_patients))))
+                            if addition_cap: 
+                                train_patient_list += intersection.sample(n=max_per_hospital_addition).values.tolist()
+                            else: 
+                                train_patient_list += hos_patients
+
+                    # limit per hospital of training 
+                    if addition_cap: 
+                        df = tv_split['OUTCOME']
+                        if len(df) > max_per_hospital: 
+                            selected = df.sample(n=max_per_hospital) 
+                        
+                        for key in tv_split.keys(): 
+                            temp = tv_split[key]
+                            tv_split[key] = temp[temp["stay_id"].isin(selected['stay_id'])]
+                        
+                    
                     # combine selected list with patients from half of the test hospital
                     for key in tv_data.keys(): 
                         df = tv_data[key]

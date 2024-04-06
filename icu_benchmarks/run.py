@@ -88,6 +88,8 @@ def main(my_args=tuple(sys.argv[1:])):
                     hospital_format = f"train-test{args.hospital_id}-n{args.max_train}"
                 else: 
                     hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-n{args.max_train}"
+            if args.addition_cap: 
+                hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-n1500"
         else:
             if args.max_train: 
                 hospital_format = f"train{args.hospital_id}-n{args.max_train}"
@@ -210,6 +212,7 @@ def main(my_args=tuple(sys.argv[1:])):
         complete_train=args.complete_train,
         save_data=args.save_data,
         max_train=args.max_train,
+        addition_cap = args.addition_cap, 
     )
 
     log_full_line("FINISHED TRAINING", level=logging.INFO, char="=", num_newlines=3)
