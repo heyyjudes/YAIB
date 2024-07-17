@@ -42,7 +42,7 @@ def preprocess_data(
     hospital_id_test = None, 
     eval_only = False,
     max_train = False,
-    addition_cap = False, 
+    addition_cap = None, 
 ) -> dict[dict[pd.DataFrame]]:
     """Perform loading, splitting, imputing and normalising of task data.
 
@@ -104,7 +104,11 @@ def preprocess_data(
 
     # set fixed size test set
     max_test = 400
-    max_per_hospital = 1666 #1500/0.9 sinze 0.9 of the total data is used for train 
+    # default if no addition cap specified
+    if addition_cap is not None: 
+        max_per_hospital = int(addition_cap/0.9)
+    else: 
+        max_per_hospital = 1666 #1500/0.9 sinze 0.9 of the total data is used for train 
     # filter by hospital id
     if hospital_id: 
         hospital_patient_df = pd.read_csv(os.path.join(data_dir, "patient_hospital.csv"))
@@ -161,13 +165,14 @@ def preprocess_data(
                             hos_patients = hospital_patient_df[hospital_patient_df["hospitalid"]==int(h)]["patientunitstayid"].to_list()
                             all_patients = tv_data['OUTCOME']['stay_id'].tolist()
                             intersection = pd.Series(sorted(set(hos_patients).intersection(set(all_patients))))
-                            if addition_cap: 
+                            if addition_cap is not None: 
+                    
                                 train_patient_list += intersection.sample(n=max_per_hospital_addition).values.tolist()
                             else: 
                                 train_patient_list += hos_patients
 
                     # limit per hospital of training 
-                    if addition_cap: 
+                    if addition_cap is not None: 
                         df = tv_split['OUTCOME']
                         if len(df) > max_per_hospital: 
                             selected = df.sample(n=max_per_hospital) 
