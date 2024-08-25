@@ -88,8 +88,8 @@ def main(my_args=tuple(sys.argv[1:])):
                     hospital_format = f"train-test{args.hospital_id}-n{args.max_train}"
                 else: 
                     hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-n{args.max_train}"
-            if args.addition_cap: 
-                hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-n1500"
+            if args.addition_cap is not None: 
+                hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-n{args.addition_cap}"
         else:
             if args.max_train: 
                 hospital_format = f"train{args.hospital_id}-n{args.max_train}"
