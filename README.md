@@ -1,3 +1,15 @@
+## Modifications
+
+This repo is the a modified version of YAIB. Please also cite the original work if you use this repo. 
+
+This repo contains modified code which allows specifying specific hospitals without generating new cohorts. 
+Specifically: 
+- [notebooks](notebooks): contains notebooks for analyzing and parsing YAIB outputs
+- [data-addition-scripts](data-addition-scripts): contains scripts for running experiments for different data composition
+- [icu_benchmarks](icu_benchmarks): contains modified files preprocessing and training.
+
+________
+
 ![YAIB logo](https://github.com/rvandewater/YAIB/blob/development/docs/figures/yaib_logo.png?raw=true)
 
 # 🧪 Yet Another ICU Benchmark
