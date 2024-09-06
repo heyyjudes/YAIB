@@ -118,10 +118,9 @@ def preprocess_data(
             patient_list += hospital_patient_df[hospital_patient_df["hospitalid"]==int(h)]["patientunitstayid"].to_list()
 
         if hospital_id_test:
-            
-            
+            test_hospitals = hospital_id_test.split("-")
             # a test hospital is specified
-            if hospital_id_test in hospitals and not eval_only: 
+            if len(test_hospitals) == 1 and hospital_id_test in hospitals and not eval_only: 
                 # get list of patients in test hospital 
                 logging.info(f"training and testing on same hospital splitting patients") 
                 test_patient_list = hospital_patient_df[hospital_patient_df["hospitalid"]==int(hospital_id_test)]["patientunitstayid"].to_list()
@@ -194,12 +193,22 @@ def preprocess_data(
             else: 
                 assert(complete_train) # must use all data for training/validation if separate test split is specified 
                 # we are not using test hospital in the training set
-                test_patient_list = hospital_patient_df[hospital_patient_df["hospitalid"]==int(hospital_id_test)]
-                test_patient_list = test_patient_list["patientunitstayid"].to_list()
+                
+                if len(test_hospitals) > 1: 
+                    test_patient_list = [] 
+                    for h in test_hospitals: 
+                        test_patient_list += hospital_patient_df[hospital_patient_df["hospitalid"]==int(h)]["patientunitstayid"].to_list()
+                    df = tv_data['OUTCOME']
+                    task_patient_list = df[df["stay_id"].isin(test_patient_list)]["stay_id"].tolist()
+                    # no maximum if more than 1 test hospital specified
+                    max_test = len(task_patient_list)
+                else: 
+                    test_patient_list = hospital_patient_df[hospital_patient_df["hospitalid"]==int(hospital_id_test)]
+                    test_patient_list = test_patient_list["patientunitstayid"].to_list()
+                    df = tv_data['OUTCOME']
+                    task_patient_list = df[df["stay_id"].isin(test_patient_list)]["stay_id"].tolist()
+                
                 # patients in hospital and task
-                df = tv_data['OUTCOME']
-
-                task_patient_list = df[df["stay_id"].isin(test_patient_list)]["stay_id"].tolist()
                 pos_class = False
                 while pos_class == False: 
                     sampled_task_patient_list = random.sample(task_patient_list, max_test)
