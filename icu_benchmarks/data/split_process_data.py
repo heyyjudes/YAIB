@@ -43,6 +43,7 @@ def preprocess_data(
     eval_only = False,
     max_train = False,
     addition_cap = None, 
+    subgroup = None,
 ) -> dict[dict[pd.DataFrame]]:
     """Perform loading, splitting, imputing and normalising of task data.
 
@@ -157,16 +158,30 @@ def preprocess_data(
                     max_per_hospital_addition = max_per_hospital
                     
                 if len(hospitals) > 1: 
+                    # SUBGROUP CODE
+                    if subgroup is not None:
+                        patient_demo_df = pd.read_parquet(os.path.join(data_dir, "sta.parquet"), engine='pyarrow')
+                        subgroup_attribute = 'sex' if subgroup in patient_demo_df['sex'].values else 'ethnic'
+                        
+                        if subgroup_attribute == 'ethnic' and subgroup not in patient_demo_df['ethnic'].values:
+                            logging.info(f"subgroup {subgroup} does not belong to either sex or ethnic attribute")
+                            
+                        hospital_patient_df = hospital_patient_df.merge(patient_demo_df, left_on="patientunitstayid", right_on="stay_id")
+                    
                     train_patient_list = [] 
                     for h in hospitals: 
                         if h != hospital_id_test: 
 
                             hos_patients = hospital_patient_df[hospital_patient_df["hospitalid"]==int(h)]["patientunitstayid"].to_list()
+
+                            # SUBGROUP CODE
+                            if subgroup is not None:
+                                hos_patients = hospital_patient_df[(hospital_patient_df["hospitalid"]==int(h)) & (hospital_patient_df[subgroup_attribute]==subgroup)]["patientunitstayid"].to_list()
+                            
                             all_patients = tv_data['OUTCOME']['stay_id'].tolist()
                             intersection = pd.Series(sorted(set(hos_patients).intersection(set(all_patients))))
                             if addition_cap is not None: 
-                    
-                                train_patient_list += intersection.sample(n=max_per_hospital_addition).values.tolist()
+                                train_patient_list += intersection.sample(n=min(max_per_hospital_addition, len(intersection))).values.tolist()
                             else: 
                                 train_patient_list += hos_patients
 

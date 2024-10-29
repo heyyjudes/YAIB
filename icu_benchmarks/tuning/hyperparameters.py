@@ -40,6 +40,7 @@ def choose_and_bind_hyperparameters(
     hospital_id = None, 
     hospital_id_test = None, 
     max_train = None, 
+    subgroup = None,
 ):
     """Choose hyperparameters to tune and bind them to gin.
 
@@ -118,6 +119,7 @@ def choose_and_bind_hyperparameters(
                 hospital_id = hospital_id, 
                 hospital_id_test = hospital_id_test, 
                 max_train = max_train,
+                subgroup=subgroup,
             )
 
     header = ["ITERATION"] + hyperparams_names + ["LOSS AT ITERATION"]

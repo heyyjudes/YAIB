@@ -90,6 +90,10 @@ def main(my_args=tuple(sys.argv[1:])):
                     hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-n{args.max_train}"
             if args.addition_cap is not None: 
                 hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-n{args.addition_cap}"
+                
+            if args.addition_subgroup_only is not None:
+                hospital_format = f"train-test{args.hospital_id}-{args.addition_subgroup_only}"
+   
         else:
             if args.max_train: 
                 hospital_format = f"train{args.hospital_id}-n{args.max_train}"
@@ -177,6 +181,7 @@ def main(my_args=tuple(sys.argv[1:])):
             hospital_id=args.hospital_id,
             hospital_id_test=args.hospital_id_test,
             max_train=args.max_train,
+            subgroup=args.addition_subgroup_only
         )
 
     log_full_line(f"Logging to {run_dir.resolve()}", level=logging.INFO)
@@ -213,6 +218,7 @@ def main(my_args=tuple(sys.argv[1:])):
         save_data=args.save_data,
         max_train=args.max_train,
         addition_cap = args.addition_cap, 
+        subgroup=args.addition_subgroup_only
     )
 
     log_full_line("FINISHED TRAINING", level=logging.INFO, char="=", num_newlines=3)
