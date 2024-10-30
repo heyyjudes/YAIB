@@ -46,6 +46,7 @@ def execute_repeated_cv(
     save_data=False, 
     max_train=None, 
     addition_cap=False, 
+    subgroup=None,
 ) -> float:
     """Preprocesses data and trains a model for each fold.
 
@@ -121,6 +122,7 @@ def execute_repeated_cv(
                 eval_only=eval_only,
                 max_train=max_train,
                 addition_cap=addition_cap,
+                subgroup=subgroup,
             )
             if save_data: 
                 save_data_to_dir(log_dir, data)

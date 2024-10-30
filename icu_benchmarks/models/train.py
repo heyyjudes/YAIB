@@ -176,7 +176,7 @@ def train_common(
     test_loader = (
         DataLoader(
             test_dataset,
-            batch_size=min(batch_size * 8, len(test_dataset)),
+            batch_size=min(batch_size, len(test_dataset)),
             shuffle=False,
             num_workers=num_workers,
             pin_memory=True,
@@ -206,7 +206,7 @@ def train_common(
     test_rep, test_label, test_sex, test_race = test_dataset.get_data_and_labels(groups=True)    
     # compute overall accuracy
     if model.requires_backprop: 
-        for batch in test_loader: 
+        for i, batch in enumerate(test_loader): 
             data, labels, mask = batch
             if isinstance(data, list):
                 for i in range(len(data)):
@@ -230,6 +230,39 @@ def train_common(
             acc_fn = Accuracy(task="binary")
             acc_fn(transformed_output[0]>0.5, transformed_output[1])
 
+            vals, cnts = np.unique(test_sex, return_counts=True) 
+        
+            for v, c in zip(vals, cnts): 
+                mask = test_sex[i*batch_size:(i+1)*batch_size] == v
+                mask = mask.values
+                gv = len(np.unique(test_label[i*batch_size:(i+1)*batch_size][mask]))
+                if gv > 1: 
+                    # ordering of score and label is different between torch metrics and sklearn
+                    if model.requires_backprop: 
+                        fold_metrics[f'gender{v}_AUC_TEST'] = auc_fn(transformed_output[0][mask], transformed_output[1][mask])
+                        fold_metrics[f'gender{v}_BACC_TEST'] = bacc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
+                        fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
+                    else: 
+                        fold_metrics[f'gender{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
+                        fold_metrics[f'gender{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
+                        fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
+        
+            # race
+            vals, cnts = np.unique(test_race, return_counts=True) 
+            for v, c in zip(vals, cnts):  
+                mask = test_race[i*batch_size:(i+1)*batch_size] == v
+                mask = mask.values
+                gv = len(np.unique(test_label[i*batch_size:(i+1)*batch_size][mask]))
+                if gv > 1: 
+                    if model.requires_backprop: 
+                        fold_metrics[f'race{v}_AUC_TEST'] = auc_fn(transformed_output[0][mask], transformed_output[1][mask])
+                        fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
+                        fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
+                    else: 
+                        fold_metrics[f'race{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
+                        fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
+                        fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
+
 
     else: 
         test_pred = model.predict(test_rep)[:, 1]
@@ -241,38 +274,38 @@ def train_common(
         fold_metrics['BACC_TEST'] = bacc_fn(test_label, test_pred>thresh)
         fold_metrics['AUC_TEST'] = auc_fn(test_label, test_pred)
 
-    vals, cnts = np.unique(test_sex, return_counts=True) 
-
-    for v, c in zip(vals, cnts): 
-        mask = test_sex == v
-        mask = mask.values
-        gv = len(np.unique(test_label[mask]))
-        if gv > 1: 
-            # ordering of score and label is different between torch metrics and sklearn
-            if model.requires_backprop: 
-                fold_metrics[f'gender{v}_AUC_TEST'] = auc_fn(transformed_output[0][mask], transformed_output[1][mask])
-                fold_metrics[f'gender{v}_BACC_TEST'] = bacc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
-                fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
-            else: 
-                fold_metrics[f'gender{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
-                fold_metrics[f'gender{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
-                fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
-
-    # race
-    vals, cnts = np.unique(test_race, return_counts=True) 
-    for v, c in zip(vals, cnts):  
-        mask = test_race == v
-        mask = mask.values
-        gv = len(np.unique(test_label[mask]))
-        if gv > 1: 
-            if model.requires_backprop: 
-                fold_metrics[f'race{v}_AUC_TEST'] = auc_fn(transformed_output[0][mask], transformed_output[1][mask])
-                fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
-                fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
-            else: 
-                fold_metrics[f'race{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
-                fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
-                fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
+        vals, cnts = np.unique(test_sex, return_counts=True) 
+    
+        for v, c in zip(vals, cnts): 
+            mask = test_sex == v
+            mask = mask.values
+            gv = len(np.unique(test_label[mask]))
+            if gv > 1: 
+                # ordering of score and label is different between torch metrics and sklearn
+                if model.requires_backprop: 
+                    fold_metrics[f'gender{v}_AUC_TEST'] = auc_fn(transformed_output[0][mask], transformed_output[1][mask])
+                    fold_metrics[f'gender{v}_BACC_TEST'] = bacc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
+                    fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
+                else: 
+                    fold_metrics[f'gender{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
+                    fold_metrics[f'gender{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
+                    fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
+    
+        # race
+        vals, cnts = np.unique(test_race, return_counts=True) 
+        for v, c in zip(vals, cnts):  
+            mask = test_race == v
+            mask = mask.values
+            gv = len(np.unique(test_label[mask]))
+            if gv > 1: 
+                if model.requires_backprop: 
+                    fold_metrics[f'race{v}_AUC_TEST'] = auc_fn(transformed_output[0][mask], transformed_output[1][mask])
+                    fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
+                    fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
+                else: 
+                    fold_metrics[f'race{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
+                    fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
+                    fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
 
 
     if model.requires_backprop: 
