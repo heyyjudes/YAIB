@@ -8,6 +8,7 @@ Specifically:
 - [data-addition-scripts](data-addition-scripts): contains scripts for running experiments for different data composition
 - [icu_benchmarks](icu_benchmarks): contains modified files preprocessing and training.
 
+### Changelog 
 ________
 
 ![YAIB logo](https://github.com/rvandewater/YAIB/blob/development/docs/figures/yaib_logo.png?raw=true)
