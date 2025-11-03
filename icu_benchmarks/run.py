@@ -225,12 +225,8 @@ def main(my_args=tuple(sys.argv[1:])):
         save_data=args.save_data,
         max_train=args.max_train,
         addition_cap = args.addition_cap, 
-<<<<<<< HEAD
         subgroup=args.addition_subgroup_only,
         test_on = test_on
-=======
-        subgroup=args.addition_subgroup_only
->>>>>>> 2ffcc89c13a019b131a97bb257069f15ffa0b174
     )
 
     log_full_line("FINISHED TRAINING", level=logging.INFO, char="=", num_newlines=3)
