@@ -1,7 +1,7 @@
 import importlib
 import sys
 import warnings
-from math import sqrt
+from math import sqrt, isnan
 
 import gin
 import torch
@@ -143,7 +143,16 @@ def aggregate_results(log_dir: Path, execution_time: timedelta = None):
 
     # Calculate the population standard deviation over aggregated results over folds/iterations
     # Divide by sqrt(n) to get standard deviation.
-    std_scores = {metric: (pstdev(list) / sqrt(len(list))) for metric, list in list_scores.items()}
+    # std_scores = {metric: (pstdev(list) / sqrt(len(list))) for metric, list in list_scores.items()}
+    
+    std_scores = {}
+    for metric, list in list_scores.items():
+        # Filter out NaN values
+        filtered_list = [x for x in list if not isinstance(x, float) or not isnan(x)]
+        if filtered_list:  # Only calculate if we have valid values
+            std_scores[metric] = pstdev(filtered_list) / sqrt(len(filtered_list))
+        else:
+            std_scores[metric] = float('nan')
 
     confidence_interval = {
         metric: (stats.t.interval(0.95, len(list) - 1, loc=mean(list), scale=stats.sem(list)))

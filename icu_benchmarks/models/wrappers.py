@@ -155,25 +155,49 @@ class DLWrapper(BaseModule, ABC):
         }
         return super().on_train_start()
 
+    # def finalize_step(self, step_prefix=""):
+    #     try:
+    #         self.log_dict(
+    #             {
+    #                 f"{step_prefix}/{name}": (
+    #                     np.float32(metric.compute()) if isinstance(metric.compute(), np.float64) else metric.compute()
+    #                 )
+    #                 for name, metric in self.metrics[step_prefix].items()
+    #                 if "_Curve" not in name
+    #             },
+    #             sync_dist=True,
+    #         )
+    #         for metric in self.metrics[step_prefix].values():
+    #             metric.reset()
+    #     except (NotComputableError, ValueError):
+    #         if step_prefix not in self._metrics_warning_printed:
+    #             self._metrics_warning_printed.add(step_prefix)
+    #             logging.warning(f"Metrics for {step_prefix} not computable")
+    #         pass
+
     def finalize_step(self, step_prefix=""):
-        try:
-            self.log_dict(
-                {
-                    f"{step_prefix}/{name}": (
-                        np.float32(metric.compute()) if isinstance(metric.compute(), np.float64) else metric.compute()
-                    )
-                    for name, metric in self.metrics[step_prefix].items()
-                    if "_Curve" not in name
-                },
-                sync_dist=True,
-            )
-            for metric in self.metrics[step_prefix].values():
-                metric.reset()
-        except (NotComputableError, ValueError):
-            if step_prefix not in self._metrics_warning_printed:
-                self._metrics_warning_printed.add(step_prefix)
-                logging.warning(f"Metrics for {step_prefix} not computable")
-            pass
+        values = {}
+        for name, metric in self.metrics[step_prefix].items():
+            if "_Curve" in name:
+                continue
+            try:
+                v = metric.compute()
+            except (NotComputableError, ValueError):
+                if step_prefix not in self._metrics_warning_printed:
+                    self._metrics_warning_printed.add(step_prefix)
+                    logging.warning(f"Metrics for {step_prefix} not computable")
+                v = float("nan")  # <-- still log the key
+            # cast numpy float64 -> float32 (Lightning-safe)
+            if isinstance(v, np.float64):
+                v = np.float32(v)
+            # If a metric returns a tuple/dict, skip it here
+            if not isinstance(v, (tuple, dict)):
+                values[f"{step_prefix}/{name}"] = v
+
+        # Every rank calls this with the same keys
+        self.log_dict(values, sync_dist=True)
+        for m in self.metrics[step_prefix].values():
+            m.reset()
 
     def configure_optimizers(self):
         """Configure optimizers and learning rate schedulers."""

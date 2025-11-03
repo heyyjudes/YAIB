@@ -92,7 +92,11 @@ def main(my_args=tuple(sys.argv[1:])):
                 hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-n{args.addition_cap}"
                 
             if args.addition_subgroup_only is not None:
-                hospital_format = f"train-test{args.hospital_id}-{args.addition_subgroup_only}"
+                hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-{args.addition_subgroup_only}"
+                if args.addition_cap is not None:
+                    hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-{args.addition_subgroup_only}-n{args.addition_cap}"
+                if args.max_train is not None:
+                    hospital_format = f"train{args.hospital_id}-test{args.hospital_id_test}-{args.addition_subgroup_only}-n{args.max_train}"
    
         else:
             if args.max_train: 
@@ -186,10 +190,13 @@ def main(my_args=tuple(sys.argv[1:])):
 
     log_full_line(f"Logging to {run_dir.resolve()}", level=logging.INFO)
     if evaluate:
+        test_on = "test"
         mode_string = "STARTING EVALUATION"
     elif args.fine_tune:
+        test_on = "val"
         mode_string = "STARTING FINE TUNING"
     else:
+        test_on = "test"
         mode_string = "STARTING TRAINING"
     log_full_line(mode_string, level=logging.INFO, char="=", num_newlines=3)
 
@@ -218,7 +225,8 @@ def main(my_args=tuple(sys.argv[1:])):
         save_data=args.save_data,
         max_train=args.max_train,
         addition_cap = args.addition_cap, 
-        subgroup=args.addition_subgroup_only
+        subgroup=args.addition_subgroup_only,
+        test_on = test_on
     )
 
     log_full_line("FINISHED TRAINING", level=logging.INFO, char="=", num_newlines=3)

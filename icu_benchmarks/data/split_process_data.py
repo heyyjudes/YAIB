@@ -109,18 +109,20 @@ def preprocess_data(
     if addition_cap is not None: 
         max_per_hospital = int(addition_cap/0.9)
     else: 
-        max_per_hospital = 1666 #1500/0.9 sinze 0.9 of the total data is used for train 
+        max_per_hospital = 1666 #1500/0.9 since 0.9 of the total data is used for train 
     # filter by hospital id
     if hospital_id: 
         hospital_patient_df = pd.read_csv(os.path.join(data_dir, "patient_hospital.csv"))
         hospitals = hospital_id.split("-")
         patient_list = [] 
-        for h in hospitals: 
+
+        # TODO: handle case where h may appear twice in hospitals
+        for h in set(hospitals): 
             patient_list += hospital_patient_df[hospital_patient_df["hospitalid"]==int(h)]["patientunitstayid"].to_list()
 
         if hospital_id_test:
             test_hospitals = hospital_id_test.split("-")
-            # a test hospital is specified
+            # a test hospital is specified and is included in the train set
             if len(test_hospitals) == 1 and hospital_id_test in hospitals and not eval_only: 
                 # get list of patients in test hospital 
                 logging.info(f"training and testing on same hospital splitting patients") 
@@ -132,7 +134,7 @@ def preprocess_data(
                 # filter tv_data by patients in test hospital 
                 selected = df[df["stay_id"].isin(test_patient_list)]
 
-                # select 400 patients in test hospital as test set
+                # select 400 patients in test hospital as test set                
                 pos_class = False
                 while pos_class == False: 
                     df_test = selected.sample(n=max_test)
@@ -140,7 +142,6 @@ def preprocess_data(
                     pos_class = tot_pos > 1 
                                     
                 df_train_val = selected.drop(df_test.index)
-                
                     
                 for key in tv_data.keys(): 
                     # save half for test data
@@ -158,7 +159,7 @@ def preprocess_data(
                     max_per_hospital_addition = max_per_hospital
                     
                 if len(hospitals) > 1: 
-                    # SUBGROUP CODE
+                    # SUBGROUP CODE: load ethnic data
                     if subgroup is not None:
                         patient_demo_df = pd.read_parquet(os.path.join(data_dir, "sta.parquet"), engine='pyarrow')
                         subgroup_attribute = 'sex' if subgroup in patient_demo_df['sex'].values else 'ethnic'
@@ -181,9 +182,10 @@ def preprocess_data(
                             all_patients = tv_data['OUTCOME']['stay_id'].tolist()
                             intersection = pd.Series(sorted(set(hos_patients).intersection(set(all_patients))))
                             if addition_cap is not None: 
-                                train_patient_list += intersection.sample(n=min(max_per_hospital_addition, len(intersection))).values.tolist()
-                            else: 
-                                train_patient_list += hos_patients
+                                hos_patients = intersection.sample(n=min(max_per_hospital_addition, len(intersection))).values.tolist()
+
+                            train_patient_list += hos_patients
+                            logging.info(f"added {len(hos_patients)} patients from train hospital {h}")
 
                     # limit per hospital of training 
                     if addition_cap is not None: 
@@ -346,8 +348,6 @@ def make_train_test(
             data_split[fold] = {
             data_type: data[data_type].merge(split[fold], on=id, how="right", sort=True) for data_type in data.keys()
         }
-
-
         
     # subsample test set eval 
     # Get stay IDs from outcome segment

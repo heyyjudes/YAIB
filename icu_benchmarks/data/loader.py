@@ -158,13 +158,14 @@ class PredictionDataset(CommonDataset):
         
         sex = self.features_df.groupby(level=self.vars["GROUP"], sort=False).last()['sex']
         race = self.features_df.groupby(level=self.vars["GROUP"], sort=False).last()['ethnic']
+        # indices = self.features_df.groupby(level=self.vars["GROUP"], sort=False).last().index.to_numpy()
         if len(labels) == self.num_stays:
             # order of groups could be random, we make sure not to change it
             rep = rep.groupby(level=self.vars["GROUP"], sort=False).last()
         rep = rep.to_numpy().astype(float)
 
         if groups: 
-            return rep, labels, sex, race 
+            return rep, labels, sex, race
         else: 
             return rep, labels
 

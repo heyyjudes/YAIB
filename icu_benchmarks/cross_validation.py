@@ -131,8 +131,7 @@ def execute_repeated_cv(
             preprocess_time = datetime.now() - start_time
             start_time = datetime.now()
 
- 
-            agg_loss += train_common(
+            fold_loss, patient_data = train_common(
                 data, 
                 log_dir=repetition_fold_dir,
                 eval_only=eval_only,
@@ -146,7 +145,26 @@ def execute_repeated_cv(
                 use_wandb=wandb,
                 train_only=complete_train and train_only # if we dont test if there's no test set AND the complete train flag is on
             )
+            agg_loss += fold_loss
             train_time = datetime.now() - start_time
+            
+            # Save patient-level results to an npz file
+            np.savez(
+                repetition_fold_dir / "patient_results.npz",
+                train_ids=patient_data["train_ids"],
+                train_races=patient_data["train_races"],
+                test_ids=patient_data["test_ids"],
+                test_races=patient_data["test_races"],
+                val_ids=patient_data["val_ids"],
+                val_races=patient_data["val_races"],
+                val_predictions=patient_data["val_predictions"],
+                val_true_labels=patient_data["val_true_labels"],
+                val_pred_labels=patient_data["val_pred_labels"],
+                thresh=patient_data["val_thresh"],
+                predictions=patient_data["predictions"],
+                pred_labels=patient_data["pred_labels"],
+                true_labels=patient_data["true_labels"],
+            )
 
             log_full_line(
                 f"FINISHED FOLD {fold_index}| PREPROCESSING DURATION {preprocess_time}| PROCEDURE DURATION {train_time}",
@@ -160,7 +178,8 @@ def execute_repeated_cv(
                 wandb_log({"Iteration": repetition * cv_folds_to_train + fold_index})
             if repetition * cv_folds_to_train + fold_index > 1:
                 aggregate_results(log_dir)
-        log_full_line(f"FINISHED CV REPETITION {repetition}", level=logging.INFO, char="=", num_newlines=3)
+            
+    log_full_line(f"FINISHED CV REPETITION {repetition}", level=logging.INFO, char="=", num_newlines=3)
 
     return agg_loss / (cv_repetitions_to_train * cv_folds_to_train)
 

@@ -20,6 +20,7 @@ from icu_benchmarks.data.constants import DataSplit as Split
 from ignite.contrib.metrics import AveragePrecision, ROC_AUC
 from sklearn.metrics import log_loss, mean_squared_error, roc_auc_score, accuracy_score, precision_recall_curve, balanced_accuracy_score
 import pdb
+from loguru import logger
 
 cpu_core_count = len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else os.cpu_count()
 
@@ -154,7 +155,7 @@ def train_common(
         num_sanity_val_steps=-1,
         log_every_n_steps=5,
     )
-    
+
     if not eval_only:
         if model.requires_backprop:
             logging.info("Training DL model.")
@@ -168,6 +169,7 @@ def train_common(
     if train_only:
         logging.info("Finished training full model.")
         save_config_file(log_dir)
+        
         return 0
     
     test_dataset = dataset_class(data, split=test_on, name=dataset_names["test"])
@@ -189,82 +191,163 @@ def train_common(
     # test_loader = DataLoader([test_dataset.to_tensor()], batch_size=1)
     model.set_weight("balanced", train_dataset)
     test_loss = trainer.test(model, dataloaders=test_loader, verbose=verbose)[0]["test/loss"]
-    # additional metrics 
 
-    #threshold for accuracy score 
-    
-    if not model.requires_backprop: 
+    fold_metrics = {} 
+    test_rep, test_label, test_sex, test_race = test_dataset.get_data_and_labels(groups=True)    
+    val_rep, val_label, _, val_races = val_dataset.get_data_and_labels(groups=True)
+
+    # compute overall accuracy
+    if model.requires_backprop:
+        # First, compute validation predictions for LSTM
+        val_predictions_list = []
+        val_targets_list = []
+        
+        model.eval()  # Set model to evaluation mode
+        with torch.no_grad():
+            for val_batch in val_loader: 
+                val_input_data, val_labels, val_mask = val_batch
+                if isinstance(val_input_data, list):
+                    for j in range(len(val_input_data)):
+                        val_input_data[j] = val_input_data[j].float()
+                else:
+                    val_input_data = val_input_data.float()
+                
+                val_out = model(val_input_data)
+                
+                # Get prediction and target for validation
+                val_prediction = torch.masked_select(val_out, val_mask.unsqueeze(-1)).reshape(-1, val_out.shape[-1])
+                val_target = torch.masked_select(val_labels, val_mask)
+                val_transformed_output = model.output_transform((val_prediction, val_target))
+                
+                val_predictions_list.append(val_transformed_output[0].cpu().numpy())
+                val_targets_list.append(val_transformed_output[1].cpu().numpy())
+        
+        # Concatenate all validation predictions and targets
+        val_predictions = np.concatenate(val_predictions_list)
+        val_true_labels = np.concatenate(val_targets_list)  # Use targets from batches to ensure alignment
+        
+        # Compute validation threshold (similar to non-backprop case)
+        precision, recall, thresholds = precision_recall_curve(val_true_labels, val_predictions)
+        fscore = (2 * precision * recall) / (precision + recall)
+        ix = np.argmax(fscore)
+        thresh = thresholds[ix]
+        
+        # Now process test set
+        test_predictions_list = []
+        test_targets_list = []
+        
+        test_set_size = (len(test_dataset) // batch_size) * batch_size
+        test_sex  = torch.as_tensor(test_sex.iloc[:test_set_size].values)  
+        test_race = torch.as_tensor(test_race.iloc[:test_set_size].values)
+        
+        for i, batch in enumerate(test_loader):
+            input_data, labels, mask = batch
+            if isinstance(input_data, list):
+                for j in range(len(input_data)):
+                    input_data[j] = input_data[j].float()
+            else:
+                input_data = input_data.float()
+            out = model(input_data)
+            
+            # Get prediction and target
+            prediction = torch.masked_select(out, mask.unsqueeze(-1)).reshape(-1, out.shape[-1])
+            target = torch.masked_select(labels, mask)
+            transformed_output = model.output_transform((prediction, target))
+            
+            test_predictions_list.append(transformed_output[0])
+            test_targets_list.append(transformed_output[1])
+            
+        test_preds = torch.cat(test_predictions_list)
+        test_labels = torch.cat(test_targets_list)
+            
+        auc_fn = AUROC(task="binary")
+        fold_metrics['AUC_TEST'] = auc_fn(test_preds, test_labels)
+        bacc_fn = Accuracy(task="multiclass", num_classes=2, average='macro')
+        fold_metrics['BACC_TEST'] = bacc_fn(test_preds>0.5, test_labels)
+        acc_fn = Accuracy(task="binary")
+        fold_metrics['ACC_TEST'] = acc_fn(test_preds>0.5, test_labels)
+        
+        # Gender evaluation
+        vals, cnts = np.unique(test_sex, return_counts=True)
+        for v, c in zip(vals, cnts):
+            mask = (test_sex == v)
+            # mask = mask.values
+            
+            # Check if mask has any True values
+            if not mask.any():
+                fold_metrics[f'gender{v}_AUC_TEST'] = np.nan
+                fold_metrics[f'gender{v}_BACC_TEST'] = np.nan
+                fold_metrics[f'gender{v}_ACC_TEST'] = np.nan
+                continue
+                
+            gv = len(np.unique(test_labels[mask]))
+            if gv > 1:
+                # ordering of score and label is different between torch metrics and sklearn
+                if model.requires_backprop:
+                    fold_metrics[f'gender{v}_AUC_TEST'] = auc_fn(test_preds[mask], test_labels[mask])
+                    fold_metrics[f'gender{v}_BACC_TEST'] = bacc_fn(test_preds[mask]>0.5, test_labels[mask])
+                    fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(test_preds[mask]>0.5, test_labels[mask])
+                else:
+                    fold_metrics[f'gender{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
+                    fold_metrics[f'gender{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
+                    fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
+            else:
+                # Only one class present - can't compute AUC or BACC
+                fold_metrics[f'gender{v}_AUC_TEST'] = np.nan
+                fold_metrics[f'gender{v}_BACC_TEST'] = np.nan
+                # For accuracy with single class, check if we have samples
+                if len(test_preds[mask]) > 0:
+                    fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(test_preds[mask]>0.5, test_labels[mask])
+                else:
+                    fold_metrics[f'gender{v}_ACC_TEST'] = np.nan
+        
+        # Race evaluation
+        vals, cnts = np.unique(test_race, return_counts=True)
+        for v, c in zip(vals, cnts):
+            mask = (test_race == v)
+            # mask = mask.values
+            
+            # Check if mask has any True values
+            if not mask.any():
+                fold_metrics[f'race{v}_AUC_TEST'] = np.nan
+                fold_metrics[f'race{v}_BACC_TEST'] = np.nan
+                fold_metrics[f'race{v}_ACC_TEST'] = np.nan
+                continue
+                
+            gv = len(np.unique(test_labels[mask]))
+            if gv > 1:
+                if model.requires_backprop:
+                    fold_metrics[f'race{v}_AUC_TEST'] = auc_fn(test_preds[mask], test_labels[mask])
+                    fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(test_preds[mask]>0.5, test_labels[mask])
+                    fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(test_preds[mask]>0.5, test_labels[mask])
+                else:
+                    fold_metrics[f'race{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
+                    fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
+                    fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
+            else:
+                # Only one class present - can't compute AUC or BACC
+                fold_metrics[f'race{v}_AUC_TEST'] = np.nan
+                fold_metrics[f'race{v}_BACC_TEST'] = np.nan
+                # For accuracy with single class, check if we have samples
+                if model.requires_backprop:
+                    if len(test_preds[mask]) > 0:
+                        fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(test_preds[mask]>0.5, test_labels[mask])
+                    else:
+                        fold_metrics[f'race{v}_ACC_TEST'] = np.nan
+                else:
+                    if len(test_label[mask]) > 0:
+                        fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
+                    else:
+                        fold_metrics[f'race{v}_ACC_TEST'] = np.nan
+
+    else: 
         # select threshold for non-DL models
-        val_rep, val_label = val_dataset.get_data_and_labels()
         val_pred = model.predict(val_rep)[:, 1]
         precision, recall, thresholds = precision_recall_curve(val_label, val_pred)
         fscore = (2 * precision * recall) / (precision + recall)
         ix = np.argmax(fscore)
         thresh = thresholds[ix]
-
-    fold_metrics = {} 
-    test_rep, test_label, test_sex, test_race = test_dataset.get_data_and_labels(groups=True)    
-    # compute overall accuracy
-    if model.requires_backprop: 
-        for i, batch in enumerate(test_loader): 
-            data, labels, mask = batch
-            if isinstance(data, list):
-                for i in range(len(data)):
-                    data[i] = data[i].float()
-            else:
-                data = data.float()
-            
-            out = model(data)
-            
-            # Get prediction and target
-            prediction = torch.masked_select(out, mask.unsqueeze(-1)).reshape(-1, out.shape[-1])
-            target = torch.masked_select(labels, mask)
-            
-            transformed_output = model.output_transform((prediction, target))
-            auc_fn = AUROC(task="binary")
-            fold_metrics['AUC_TEST'] = auc_fn(transformed_output[0], transformed_output[1])
-            
-            bacc_fn = Accuracy(task="multiclass", num_classes=2, average='macro')
-            fold_metrics['BACC_TEST'] = bacc_fn(transformed_output[0]>0.5, transformed_output[1])
-
-            acc_fn = Accuracy(task="binary")
-            acc_fn(transformed_output[0]>0.5, transformed_output[1])
-
-            vals, cnts = np.unique(test_sex, return_counts=True) 
         
-            for v, c in zip(vals, cnts): 
-                mask = test_sex[i*batch_size:(i+1)*batch_size] == v
-                mask = mask.values
-                gv = len(np.unique(test_label[i*batch_size:(i+1)*batch_size][mask]))
-                if gv > 1: 
-                    # ordering of score and label is different between torch metrics and sklearn
-                    if model.requires_backprop: 
-                        fold_metrics[f'gender{v}_AUC_TEST'] = auc_fn(transformed_output[0][mask], transformed_output[1][mask])
-                        fold_metrics[f'gender{v}_BACC_TEST'] = bacc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
-                        fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
-                    else: 
-                        fold_metrics[f'gender{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
-                        fold_metrics[f'gender{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
-                        fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
-        
-            # race
-            vals, cnts = np.unique(test_race, return_counts=True) 
-            for v, c in zip(vals, cnts):  
-                mask = test_race[i*batch_size:(i+1)*batch_size] == v
-                mask = mask.values
-                gv = len(np.unique(test_label[i*batch_size:(i+1)*batch_size][mask]))
-                if gv > 1: 
-                    if model.requires_backprop: 
-                        fold_metrics[f'race{v}_AUC_TEST'] = auc_fn(transformed_output[0][mask], transformed_output[1][mask])
-                        fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
-                        fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
-                    else: 
-                        fold_metrics[f'race{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
-                        fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
-                        fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
-
-
-    else: 
         test_pred = model.predict(test_rep)[:, 1]
         auc_fn = roc_auc_score
         acc_fn = accuracy_score
@@ -275,7 +358,7 @@ def train_common(
         fold_metrics['AUC_TEST'] = auc_fn(test_label, test_pred)
 
         vals, cnts = np.unique(test_sex, return_counts=True) 
-    
+
         for v, c in zip(vals, cnts): 
             mask = test_sex == v
             mask = mask.values
@@ -290,7 +373,7 @@ def train_common(
                     fold_metrics[f'gender{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
                     fold_metrics[f'gender{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
                     fold_metrics[f'gender{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
-    
+
         # race
         vals, cnts = np.unique(test_race, return_counts=True) 
         for v, c in zip(vals, cnts):  
@@ -306,19 +389,75 @@ def train_common(
                     fold_metrics[f'race{v}_AUC_TEST'] = auc_fn(test_label[mask], test_pred[mask])
                     fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
                     fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
-
+            else:
+                if model.requires_backprop: 
+                    fold_metrics[f'race{v}_AUC_TEST'] = np.nan
+                    fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
+                    fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(transformed_output[0][mask]>0.5, transformed_output[1][mask])
+                else: 
+                    fold_metrics[f'race{v}_AUC_TEST'] = np.nan
+                    fold_metrics[f'race{v}_BACC_TEST'] = bacc_fn(test_label[mask], test_pred[mask]>thresh)
+                    fold_metrics[f'race{v}_ACC_TEST'] = acc_fn(test_label[mask], test_pred[mask]>thresh)
 
     if model.requires_backprop: 
         for key in fold_metrics: 
-            fold_metrics[key] = fold_metrics[key].item()
+            if not isinstance(fold_metrics[key], float):
+                fold_metrics[key] = fold_metrics[key].item()
             
     with open(os.path.join(log_dir, "additional_metrics.json"), "w") as outfile: 
         json.dump(fold_metrics, outfile)
 
-        
     save_config_file(log_dir)
-    return test_loss
 
+    # Extracting stay_id and race
+    test_data = data[test_on]["OUTCOME"]
+    # test_pred = model.predict(test_rep)[:, 1]
+    test_ids = test_data["stay_id"].values  # Extract patient IDs
+    test_races = data[test_on]['FEATURES']['ethnic'].values
+
+    train_data = train_dataset.get_data_and_labels(groups=True)
+    train_races = train_data[3].values
+    train_ids = train_data[3].index.to_numpy()
+
+    val_ids = val_races.index.to_numpy()
+    val_races = val_races.values
+
+    test_rep, test_label = test_dataset.get_data_and_labels()
+
+    if model.requires_backprop:
+        patient_data = {
+            "test_ids": test_ids,
+            "test_races": test_races,
+            "train_races": train_races,
+            "train_ids": train_ids,
+            "val_ids": val_ids,
+            "val_races": val_races,
+            "val_thresh": thresh,
+            "val_predictions": val_predictions, 
+            "val_true_labels": val_true_labels, 
+            "val_pred_labels": (np.array(val_predictions) > thresh).astype(int), 
+            "predictions": np.array(transformed_output[0]),
+            "pred_labels": np.array(transformed_output[1]),
+            "true_labels": np.array(test_label),
+        } 
+    else:
+        patient_data = {
+            "test_ids": test_ids,
+            "test_races": test_races,
+            "train_races": train_races,
+            "train_ids": train_ids,
+            "val_ids": val_ids,
+            "val_races": val_races,
+            "val_thresh": thresh,
+            "val_predictions": val_pred,
+            "val_true_labels": val_label,
+            "val_pred_labels": (np.array(val_pred) > thresh).astype(int),
+            "predictions": np.array(test_pred),
+            "pred_labels": (np.array(test_pred) > thresh).astype(int),
+            "true_labels": np.array(test_label),
+        }
+
+    return test_loss, patient_data
 
 def load_model(model, source_dir, pl_model=True):
     if source_dir.exists():
